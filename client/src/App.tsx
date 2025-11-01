@@ -1,49 +1,21 @@
-import './App.css';
-import '../css/style.css';
-import React from 'react';
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import Landing from './pages/Landing';
+import Login from './pages/Login';
+import SignUp from './pages/SignUp';
+import ChatRoom from './pages/ChatRoom';
+import './styles/index.css';
+
 function App() {
   return (
-    <>
-      <div className='join-container'>
-        <header className='join-header'>
-          <h1>
-            <i className='fas fa-smile'></i> ChatCord
-          </h1>
-        </header>
-        <main className='join-main'>
-          <form action='chat.html'>
-            <div className='form-control'>
-              <label htmlFor='username'>Username</label>
-              <input
-                type='text'
-                name='username'
-                id='username'
-                placeholder='Enter username...'
-                required
-              />
-            </div>
-            <div className='form-control'>
-              <label htmlFor='room'>Room</label>
-              <select name='room' id='room'>
-                <option value='JavaScript'>JavaScript</option>
-                <option value='Python'>Python</option>
-                <option value='PHP'>PHP</option>
-                <option value='C#'>C#</option>
-                <option value='Ruby'>Ruby</option>
-                <option value='Java'>Java</option>
-              </select>
-            </div>
-            <button type='submit' className='btn'>
-              Join Chat
-            </button>
-          </form>
-        </main>
-      </div>
-      {/* <p className='read-the-docs'>
-        Click on the Vite and React logos to learn more
-      </p> */}
-    </>
+    <Router>
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<SignUp />} />
+        <Route path="/room/:roomId" element={<ChatRoom />} />
+      </Routes>
+    </Router>
   );
-}
+};
 
 export default App;

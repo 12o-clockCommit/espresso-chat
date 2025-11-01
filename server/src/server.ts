@@ -12,10 +12,16 @@ import {
   userLeave,
   getRoomUsers,
 } from './utils/users';
-dotenv.config();
+import { connectDB } from './config/database';
+import Message from './models/Message';
+import moment from 'moment';
 
-const PORT = process.env.PORT || 3002;
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
+// connect to mongodb
+connectDB();
+
+const PORT = process.env.PORT || 5001;
 const app = express();
 const httpServer = createServer(app);
 /**
@@ -29,7 +35,7 @@ const io = new Server(httpServer, {
   },
 });
 
-const botName = 'ChatCord Bot';
+const botName = 'Espresso Bot';
 
 // Middleware
 // This allows ALL origins to communicate with your Express server
@@ -56,29 +62,41 @@ app.get('/api', (req, res) => {
 io.on('connection', (socket) => {
   console.log('connection: User connected:', socket.id);
 
-  socket.on('joinRoom', ({ username, room }) => {
+  socket.on('joinRoom', async ({ username, room }) => {
+    // validate input
+    if (!username || !room) {
+      socket.emit('error', { message: 'Username and room are required' });
+      return;
+    }
+
     const user = userJoin(socket.id, username, room);
     console.log('joinRoom: User joined room:', JSON.stringify(user));
 
     socket.join(user.room);
 
-    // new web socket connection
-    /*
-     *  emits to all users
-     *
-     *  io.emit()
-     */
+    // welcome message to user
+    socket.emit('message', formatMessage(botName, 'Welcome to Espresso Chat!'));
 
-    // emits to single client
-    socket.emit('message', formatMessage(botName, 'Welcome to ChatCord!'));
+    // load and send previous messages from database
+    try {
+      const messages = await Message.find({ roomId: user.room })
+        .sort({ timestamp: -1 })
+        .limit(50)
+        .exec();
 
-    /*
-     *  broadcast message to all users except sender(user who is connecting
-     *
-     *  socket.broadcast.emit()
-     */
+      // send messages in chronological order
+      messages.reverse().forEach((msg) => {
+        socket.emit('message', {
+          username: msg.username,
+          text: msg.text,
+          time: moment(msg.timestamp).format('h:mm a'),
+        });
+      });
+    } catch (error) {
+      console.log('Error loading messages:', error);
+    }
 
-    //broadcast to room
+    // broadcast to room that user joined
     socket.broadcast
       .to(user.room)
       .emit(
@@ -86,41 +104,54 @@ io.on('connection', (socket) => {
         formatMessage(botName, `${user.username} has joined the chat.`)
       );
 
-    // Send users and room info
+    // send users and room info
     io.to(user.room).emit('roomUsers', {
       room: user.room,
       users: getRoomUsers(user.room),
     });
   });
 
-  // Listen for chatMessage
-  socket.on('chatMessage', (msg) => {
-    // console.log('************************* chatMessage received: ' + socket.id);
+  // listen for chatMessage
+  socket.on('chatMessage', async (msg) => {
     const user = getCurrentUser(socket.id);
-    console.log('chatMessage: ' + JSON.stringify(user));
-    // Emit message to all users
+
+    if (!user) {
+      console.log('chatMessage error: User not found');
+      return;
+    }
+
+    console.log('chatMessage:', JSON.stringify(user));
+
+    // save message to database
+    try {
+      const newMessage = new Message({
+        roomId: user.room,
+        username: user.username,
+        text: msg,
+      });
+      await newMessage.save();
+    } catch (error) {
+      console.log('Error saving message:', error);
+    }
+
+    // emit message to all users in the room
     io.to(user.room).emit('message', formatMessage(user.username, msg));
   });
 
-  // Runs when client disconnects
+  // runs when client disconnects
   socket.on('disconnect', () => {
     const user = userLeave(socket.id);
-    console.log('User disconnected:', JSON.stringify(user));
-    if (user) {
-      // socket.broadcast
-      //   .to(user.room)
-      //   .emit(
-      //     'message',
-      //     formatMessage(user.username, `${user.username} has left the chat.`)
-      //   );
 
+    if (user) {
+      console.log('User disconnected:', JSON.stringify(user));
+
+      // notify room that user left
       io.to(user.room).emit(
         'message',
         formatMessage(botName, `${user.username} has left the chat.`)
       );
 
-      // Update user side list
-      // Send users and room info
+      // update user list for room
       io.to(user.room).emit('roomUsers', {
         room: user.room,
         users: getRoomUsers(user.room),
